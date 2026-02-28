@@ -1,0 +1,826 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>GBV Mitigation - Batch Proposal Evaluator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        :root {
+            --bg: #f3fbff;
+            --card: #ffffff;
+            --muted: #6b7280;
+            --accent1: #0ea5a0;
+            --accent2: #0b74a8;
+            --success: #27ae60;
+            --warning: #f39c12;
+            --danger: #e74c3c;
+        }
+        *{box-sizing:border-box}
+        body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,var(--bg),#eef7fb);color:#07203a}
+        .wrap{max-width:1400px;margin:36px auto;padding:24px}
+        .panel{background:var(--card);border-radius:14px;padding:26px;box-shadow:0 10px 30px rgba(3,7,18,0.06)}
+        
+        header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:16px}
+        .brand{display:flex;gap:14px;align-items:center}
+        .logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,var(--accent1),var(--accent2));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+        h1{margin:0;font-size:22px}
+        .subtitle{color:var(--muted);font-size:14px}
+
+        /* Upload Area - Enhanced for multiple files */
+        .upload-area{display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;padding:36px;border:2px dashed rgba(11,116,168,0.25);background:linear-gradient(180deg,rgba(14,165,164,0.05),transparent);cursor:pointer;transition:all .25s}
+        .upload-area:hover{transform:translateY(-4px);border-color:var(--accent1);background:rgba(14,165,164,0.02)}
+        .upload-area p{margin:0;color:var(--muted)}
+        .upload-area.active{border-color:var(--accent1);background:rgba(14,165,164,0.05)}
+        
+        /* File List - New component for multiple files */
+        .file-list-container{background:#f8fafc;border-radius:12px;padding:16px;margin-top:16px;max-height:200px;overflow-y:auto}
+        .file-list-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+        .file-list-title h4{margin:0;font-size:14px;color:var(--muted)}
+        .file-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:white;border-radius:8px;margin-bottom:6px;border:1px solid #eef5f8;font-size:13px}
+        .file-item:hover{background:#f8fafc}
+        .file-name{display:flex;align-items:center;gap:8px}
+        .file-size{color:var(--muted);font-size:11px}
+        .file-remove{color:var(--danger);cursor:pointer;padding:4px;border-radius:4px}
+        .file-remove:hover{background:rgba(231,76,60,0.1)}
+        
+        .batch-stats{display:flex;gap:16px;margin-top:12px;flex-wrap:wrap}
+        .stat-card{background:white;border-radius:10px;padding:12px 16px;flex:1;min-width:120px;border:1px solid #eef5f8}
+        .stat-label{font-size:12px;color:var(--muted)}
+        .stat-value{font-size:24px;font-weight:700;color:var(--accent2)}
+        
+        .actions{display:flex;gap:12px;justify-content:center;margin:20px 0;flex-wrap:wrap}
+        .btn{padding:12px 24px;border-radius:10px;border:none;font-weight:600;cursor:pointer;transition:all .2s;font-size:14px}
+        .btn-primary{background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#fff}
+        .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(11,116,168,0.3)}
+        .btn-success{background:var(--success);color:#fff}
+        .btn-warning{background:var(--warning);color:#fff}
+        .btn-ghost{background:transparent;border:1px solid #eef5f8;color:var(--accent2)}
+        .btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+        
+        /* Progress bar for batch processing */
+        .progress-container{width:100%;margin:16px 0;display:none}
+        .progress-bar{height:8px;background:#eef5f8;border-radius:4px;overflow:hidden}
+        .progress-fill{height:8px;background:linear-gradient(90deg,var(--accent1),var(--accent2));width:0%;transition:width .3s;border-radius:4px}
+        .progress-text{text-align:center;font-size:12px;color:var(--muted);margin-top:4px}
+        
+        table{width:100%;border-collapse:collapse;margin-top:20px;font-size:14px}
+        th,td{padding:14px;text-align:left;border-bottom:1px solid #eef5f8}
+        thead th{background:#fbfeff;color:var(--muted);font-weight:600;position:sticky;top:0}
+        .rank-1{background:linear-gradient(90deg,#fff9e6,#fff);font-weight:700}
+        
+        .score-badge{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
+        .score-high{background:rgba(39,174,96,0.15);color:#27ae60}
+        .score-medium{background:rgba(243,156,18,0.15);color:#f39c12}
+        .score-low{background:rgba(231,76,60,0.15);color:#e74c3c}
+        
+        .aside{min-width:360px}
+        .layout{display:grid;grid-template-columns:1fr 380px;gap:24px}
+        
+        .filter-section{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}
+        .filter-input{flex:1;padding:10px;border:1px solid #eef5f8;border-radius:8px;font-family:Inter}
+        
+        /* Modal styles */
+        .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;justify-content:center;align-items:center}
+        .modal.active{display:flex}
+        .modal-content{background:white;border-radius:16px;padding:28px;max-width:700px;max-height:80vh;overflow-y:auto;width:90%}
+        
+        /* Batch actions toolbar */
+        .batch-toolbar{background:#f8fafc;border-radius:10px;padding:12px;margin:16px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+        .checkbox-all{display:flex;align-items:center;gap:6px;cursor:pointer}
+        
+        @media(max-width:1200px){.layout{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="panel">
+            <header>
+                <div class="brand">
+                    <div class="logo">B</div>
+                    <div>
+                        <h1>GBV Mitigation - Batch Proposal Evaluator</h1>
+                        <div class="subtitle">Upload multiple proposals • Bulk evaluation • Weighted scoring matrix</div>
+                    </div>
+                </div>
+                <div class="batch-stats">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Proposals</div>
+                        <div class="stat-value" id="totalProposals">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Processed</div>
+                        <div class="stat-value" id="processedCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Avg Score</div>
+                        <div class="stat-value" id="avgScore">0</div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="layout">
+                <main>
+                    <!-- Enhanced Upload Area -->
+                    <div id="dropZone" class="upload-area">
+                        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" style="margin-bottom:12px">
+                            <path d="M12 3v10" stroke="#0b74a8" stroke-width="1.6" stroke-linecap="round"/>
+                            <path d="M8 7l4-4 4 4" stroke="#0b74a8" stroke-width="1.6" stroke-linecap="round"/>
+                            <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="#0b74a8" stroke-width="1.6" stroke-linecap="round"/>
+                        </svg>
+                        <p><strong>Drag & drop multiple proposal PDFs here</strong></p>
+                        <p style="font-size:13px; margin-top:4px">— or click to browse —</p>
+                        <small style="color:var(--muted);margin-top:8px; background:white; padding:4px 12px; border-radius:20px">
+                            📁 Supports up to 50 files • PDF format only
+                        </small>
+                        <input type="file" id="fileInput" multiple accept=".pdf" style="display:none">
+                    </div>
+
+                    <!-- File List (shows after upload) -->
+                    <div id="fileListContainer" class="file-list-container" style="display:none;">
+                        <div class="file-list-title">
+                            <h4>📋 Uploaded Proposals (<span id="fileCount">0</span>)</h4>
+                            <button class="btn-ghost" style="padding:4px 8px; font-size:12px" onclick="clearAllFiles()">Clear all</button>
+                        </div>
+                        <div id="fileList"></div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div id="progressContainer" class="progress-container">
+                        <div class="progress-bar">
+                            <div id="progressFill" class="progress-fill"></div>
+                        </div>
+                        <div id="progressText" class="progress-text">Processing 0/0 files...</div>
+                    </div>
+
+                    <!-- Batch Actions Toolbar -->
+                    <div id="batchToolbar" class="batch-toolbar" style="display:none;">
+                        <label class="checkbox-all">
+                            <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"> 
+                            <span style="font-size:13px">Select all</span>
+                        </label>
+                        <div style="flex:1"></div>
+                        <button class="btn-ghost" style="padding:6px 12px; font-size:12px" onclick="deleteSelected()" id="deleteSelectedBtn" disabled>
+                            🗑️ Delete selected (<span id="selectedCount">0</span>)
+                        </button>
+                    </div>
+
+                    <!-- Main Action Buttons -->
+                    <div class="actions">
+                        <button class="btn btn-primary" onclick="processAllProposals()" id="processBtn">
+                            🚀 Evaluate All Proposals
+                        </button>
+                        <button class="btn btn-success" onclick="exportToExcel()" id="exportBtn" style="display:none;">
+                            📥 Export Full Report
+                        </button>
+                        <button class="btn btn-warning" onclick="exportComparisonMatrix()" id="matrixBtn" style="display:none;">
+                            📊 Export Comparison Matrix
+                        </button>
+                    </div>
+
+                    <!-- Results Table -->
+                    <div style="overflow-x:auto;">
+                        <table id="resultsTable" style="display:none;">
+                            <thead>
+                                <tr>
+                                    <th style="width:40px"></th>
+                                    <th style="width:50px">Rank</th>
+                                    <th>Consultant/Firm</th>
+                                    <th style="width:120px">Total Score</th>
+                                    <th style="width:140px">Status</th>
+                                    <th style="width:100px">Criteria Avg</th>
+                                    <th style="width:80px">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </div>
+                </main>
+
+                <aside class="aside">
+                    <!-- Evaluation Summary Card -->
+                    <div class="profile" style="padding:20px">
+                        <div class="avatar">📋</div>
+                        <h3 style="margin:16px 0 8px">Evaluation Matrix</h3>
+                        <div style="color:var(--muted);font-size:13px; margin-bottom:16px">Chrysalis • GBV Mitigation</div>
+                        
+                        <!-- Weighted Criteria List -->
+                        <div style="width:100%; margin-top:8px">
+                            <h4 style="margin:0 0 12px; font-size:14px; display:flex; justify-content:space-between">
+                                <span>Scoring Criteria</span>
+                                <span style="color:var(--muted); font-weight:400">Weight</span>
+                            </h4>
+                            
+                            <div class="criteria-group">
+                                <div style="font-weight:600; font-size:12px; color:var(--accent2); margin:8px 0 4px">1. Understanding of ToR</div>
+                                <div class="weight-indicator">
+                                    <span style="font-size:12px">1.1 Clarity & Depth</span>
+                                    <span style="font-size:11px">10%</span>
+                                </div>
+                                <div class="weight-bar"><div class="weight-fill" style="width:10%"></div></div>
+                                
+                                <div class="weight-indicator" style="margin-top:8px">
+                                    <span style="font-size:12px">1.2 Gender/CS/MEAL</span>
+                                    <span style="font-size:11px">20%</span>
+                                </div>
+                                <div class="weight-bar"><div class="weight-fill" style="width:20%"></div></div>
+                            </div>
+
+                            <div class="criteria-group" style="margin-top:12px">
+                                <div style="font-weight:600; font-size:12px; color:var(--accent2); margin:8px 0 4px">2. Methodology</div>
+                                <div class="weight-indicator">
+                                    <span style="font-size:12px">2.1 Proposed Methodology</span>
+                                    <span style="font-size:11px">25%</span>
+                                </div>
+                                <div class="weight-bar"><div class="weight-fill" style="width:25%"></div></div>
+                                
+                                <div class="weight-indicator" style="margin-top:8px">
+                                    <span style="font-size:12px">2.2 Work Plan</span>
+                                    <span style="font-size:11px">10%</span>
+                                </div>
+                                <div class="weight-bar"><div class="weight-fill" style="width:10%"></div></div>
+                            </div>
+
+                            <div class="criteria-group" style="margin-top:12px">
+                                <div style="font-weight:600; font-size:12px; color:var(--accent2); margin:8px 0 4px">3. Technical Expertise</div>
+                                <div class="weight-indicator">
+                                    <span style="font-size:12px">3.1 Direct Experience</span>
+                                    <span style="font-size:11px">25%</span>
+                                </div>
+                                <div class="weight-bar"><div class="weight-fill" style="width:25%"></div></div>
+                                
+                                <div class="weight-indicator" style="margin-top:8px">
+                                    <span style="font-size:12px">3.2 Thematic Experience</span>
+                                    <span style="font-size:11px">20%</span>
+                                </div>
+                                <div class="weight-bar"><div class="weight-fill" style="width:20%"></div></div>
+                                
+                                <div class="weight-indicator" style="margin-top:8px">
+                                    <span style="font-size:12px">3.3 Local Knowledge</span>
+                                    <span style="font-size:11px">20%</span>
+                                </div>
+                                <div class="weight-bar"><div class="weight-fill" style="width:20%"></div></div>
+                            </div>
+
+                            <div style="margin-top:16px; padding:12px; background:#f8fafc; border-radius:8px">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:8px">
+                                    <span>📊 Total Processed:</span>
+                                    <span id="asideProcessedCount">0</span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; margin-bottom:8px">
+                                    <span>✅ High Priority (85+):</span>
+                                    <span id="asideHighCount">0</span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between">
+                                    <span>📈 Average Score:</span>
+                                    <span id="asideAvgScore">0</span>
+                                </div>
+                            </div>
+
+                            <div style="margin-top:16px; font-size:11px; color:var(--muted); text-align:center">
+                                Scoring: 1=Very Poor • 2=Poor • 3=Average • 4=Good • 5=Excellent
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="evaluationModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle" style="margin-top:0">Detailed Evaluation</h3>
+            <div id="modalContent"></div>
+            <div style="display:flex; gap:8px; margin-top:20px">
+                <button class="btn btn-ghost" onclick="closeModal()" style="flex:1">Close</button>
+                <button class="btn btn-primary" onclick="printEvaluation()" style="flex:1">🖨️ Print</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Evaluation criteria from your Excel
+        const evaluationCriteria = [
+            { id: 'c1_1', category: '1. Understanding of ToR', name: 'Clarity and Depth of Understanding of the ToR', weight: 0.1 },
+            { id: 'c1_2', category: '1. Understanding of ToR', name: 'Gender Equality, Conflict Sensitivity and MEAL', weight: 0.2 },
+            { id: 'c2_1', category: '2. Methodology and Approach', name: 'Proposed Methodology', weight: 0.25 },
+            { id: 'c2_2', category: '2. Methodology and Approach', name: 'Feasibility of Work Plan', weight: 0.1 },
+            { id: 'c3_1', category: '3. Technical Expertise', name: 'Direct Experience (Curriculum, Coaching)', weight: 0.25 },
+            { id: 'c3_2', category: '3. Technical Expertise', name: 'Specialized Thematic Experience', weight: 0.2 },
+            { id: 'c3_3', category: '3. Technical Expertise', name: 'Regional/Local Knowledge', weight: 0.2 },
+            { id: 'c4_1', category: '4. Financial Proposal', name: 'Budget Breakdown and Fee Structure', weight: 0.2 },
+            { id: 'c4_2', category: '4. Financial Proposal', name: 'Cost-Effectiveness', weight: 0.2 },
+            { id: 'c5_1', category: '5. Past Performance', name: 'Previous Relevant Work', weight: 0.2 },
+            { id: 'c5_2', category: '5. Past Performance', name: 'Administrative Completeness', weight: 0.1 }
+        ];
+
+        // DOM Elements
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZone');
+        const fileListContainer = document.getElementById('fileListContainer');
+        const fileList = document.getElementById('fileList');
+        const fileCount = document.getElementById('fileCount');
+        const tableBody = document.getElementById('tableBody');
+        const resultsTable = document.getElementById('resultsTable');
+        const exportBtn = document.getElementById('exportBtn');
+        const matrixBtn = document.getElementById('matrixBtn');
+        const processBtn = document.getElementById('processBtn');
+        const batchToolbar = document.getElementById('batchToolbar');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const modal = document.getElementById('evaluationModal');
+        const modalContent = document.getElementById('modalContent');
+        const modalTitle = document.getElementById('modalTitle');
+
+        // Data stores
+        let uploadedFiles = [];
+        let proposalData = [];
+        let selectedFiles = new Set();
+
+        // Consultant names pool (you can add more)
+        const consultantNames = [
+            'Hafsah Muheed', 'Krishani Perera', 'Suthaharan Perampalan', 
+            'Nushalya Rajapakse', 'Jennifer Goonawardena', 'Janani Krishan',
+            'Indrani Rajendra', 'Deshani Senanayaka', 'Shunthalai Muthuraj',
+            'Ruwan Perera', 'Malini Fernando', 'Sunil Abeysekera',
+            'Kamala Vithanage', 'Ajith Nissanka', 'Dilrukshi Gamage'
+        ];
+
+        // Initialize
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        // Drag & drop with visual feedback
+        ['dragenter', 'dragover'].forEach(e => {
+            dropZone.addEventListener(e, ev => {
+                ev.preventDefault();
+                dropZone.classList.add('active');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(e => {
+            dropZone.addEventListener(e, ev => {
+                ev.preventDefault();
+                dropZone.classList.remove('active');
+            });
+        });
+
+        dropZone.addEventListener('drop', (ev) => {
+            if (ev.dataTransfer?.files) {
+                handleFiles(ev.dataTransfer.files);
+            }
+        });
+
+        function handleFiles(files) {
+            const newFiles = Array.from(files).filter(file => 
+                file.type === 'application/pdf' && 
+                !uploadedFiles.some(f => f.name === file.name)
+            );
+
+            if (newFiles.length === 0) {
+                alert('Please upload only PDF files that are not already uploaded.');
+                return;
+            }
+
+            uploadedFiles = [...uploadedFiles, ...newFiles];
+            updateFileList();
+            updateBatchStats();
+            
+            // Enable process button
+            processBtn.disabled = false;
+            
+            // Show file list if hidden
+            fileListContainer.style.display = 'block';
+            batchToolbar.style.display = 'flex';
+        }
+
+        function updateFileList() {
+            fileList.innerHTML = '';
+            fileCount.textContent = uploadedFiles.length;
+            
+            uploadedFiles.forEach((file, index) => {
+                const fileSize = (file.size / 1024).toFixed(1);
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:12px; width:100%">
+                        <input type="checkbox" class="file-checkbox" data-index="${index}" onchange="toggleFileSelect(${index})" ${selectedFiles.has(index) ? 'checked' : ''}>
+                        <div class="file-name">
+                            <span>📄</span>
+                            <div>
+                                <div style="font-weight:500">${file.name.length > 40 ? file.name.substring(0,40)+'...' : file.name}</div>
+                                <div class="file-size">${fileSize} KB</div>
+                            </div>
+                        </div>
+                        <div style="flex:1"></div>
+                        <span class="file-remove" onclick="removeFile(${index})">✕</span>
+                    </div>
+                `;
+                fileList.appendChild(fileItem);
+            });
+
+            updateSelectAllCheckbox();
+            updateSelectedCount();
+        }
+
+        function toggleFileSelect(index) {
+            if (selectedFiles.has(index)) {
+                selectedFiles.delete(index);
+            } else {
+                selectedFiles.add(index);
+            }
+            updateSelectedCount();
+            updateSelectAllCheckbox();
+        }
+
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAllCheckbox').checked;
+            if (selectAll) {
+                uploadedFiles.forEach((_, index) => selectedFiles.add(index));
+            } else {
+                selectedFiles.clear();
+            }
+            updateFileList();
+            updateSelectedCount();
+        }
+
+        function updateSelectAllCheckbox() {
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = selectedFiles.size === uploadedFiles.length && uploadedFiles.length > 0;
+                selectAllCheckbox.indeterminate = selectedFiles.size > 0 && selectedFiles.size < uploadedFiles.length;
+            }
+        }
+
+        function updateSelectedCount() {
+            document.getElementById('selectedCount').textContent = selectedFiles.size;
+            document.getElementById('deleteSelectedBtn').disabled = selectedFiles.size === 0;
+        }
+
+        function removeFile(index) {
+            uploadedFiles.splice(index, 1);
+            selectedFiles.clear(); // Clear selections when files change
+            updateFileList();
+            updateBatchStats();
+            
+            if (uploadedFiles.length === 0) {
+                fileListContainer.style.display = 'none';
+                batchToolbar.style.display = 'none';
+                processBtn.disabled = true;
+                resultsTable.style.display = 'none';
+                exportBtn.style.display = 'none';
+                matrixBtn.style.display = 'none';
+            }
+        }
+
+        function deleteSelected() {
+            // Remove selected files (from end to start to avoid index issues)
+            const sortedIndices = Array.from(selectedFiles).sort((a, b) => b - a);
+            for (const index of sortedIndices) {
+                uploadedFiles.splice(index, 1);
+            }
+            selectedFiles.clear();
+            updateFileList();
+            updateBatchStats();
+            
+            if (uploadedFiles.length === 0) {
+                fileListContainer.style.display = 'none';
+                batchToolbar.style.display = 'none';
+                processBtn.disabled = true;
+                resultsTable.style.display = 'none';
+                exportBtn.style.display = 'none';
+                matrixBtn.style.display = 'none';
+            }
+        }
+
+        function clearAllFiles() {
+            uploadedFiles = [];
+            selectedFiles.clear();
+            updateFileList();
+            fileListContainer.style.display = 'none';
+            batchToolbar.style.display = 'none';
+            processBtn.disabled = true;
+            resultsTable.style.display = 'none';
+            exportBtn.style.display = 'none';
+            matrixBtn.style.display = 'none';
+        }
+
+        async function processAllProposals() {
+            if (uploadedFiles.length === 0) {
+                alert('Please upload proposal PDFs first.');
+                return;
+            }
+
+            // Show progress
+            progressContainer.style.display = 'block';
+            processBtn.disabled = true;
+            proposalData = [];
+
+            for (let i = 0; i < uploadedFiles.length; i++) {
+                const file = uploadedFiles[i];
+                
+                // Update progress
+                const progress = ((i + 1) / uploadedFiles.length) * 100;
+                progressFill.style.width = `${progress}%`;
+                progressText.textContent = `Processing ${i + 1}/${uploadedFiles.length}: ${file.name.substring(0, 30)}...`;
+
+                // Get consultant name (cycle through names if more files than names)
+                const consultantName = consultantNames[i % consultantNames.length] || `Consultant ${i + 1}`;
+                
+                // Simulate analysis (replace with actual PDF processing)
+                await new Promise(resolve => setTimeout(resolve, 300)); // Simulate processing time
+                const scores = analyzeProposal(file, i);
+                
+                // Calculate total score
+                let totalScore = 0;
+                scores.forEach(score => {
+                    totalScore += score.score * score.weight * 20;
+                });
+                totalScore = Math.min(100, Math.max(0, Math.round(totalScore)));
+
+                proposalData.push({
+                    id: i,
+                    name: consultantName,
+                    filename: file.name,
+                    scores: scores,
+                    totalScore: totalScore,
+                    status: totalScore >= 85 ? 'High Priority' : 
+                            totalScore >= 70 ? 'Selected' : 'Review Needed'
+                });
+            }
+
+            // Sort by score
+            proposalData.sort((a, b) => b.totalScore - a.totalScore);
+
+            // Update UI
+            progressContainer.style.display = 'none';
+            processBtn.disabled = false;
+            
+            renderTable();
+            updateAnalytics();
+            
+            resultsTable.style.display = 'table';
+            exportBtn.style.display = 'inline-block';
+            matrixBtn.style.display = 'inline-block';
+        }
+
+        function analyzeProposal(file, seed) {
+            // Enhanced scoring with some variation based on file properties
+            return evaluationCriteria.map((criteria, index) => {
+                // Use file properties to generate consistent scores for the same file
+                const fileHash = file.name.length + file.size + seed + index;
+                const randomFactor = (Math.sin(fileHash) * 10000) % 1;
+                
+                let baseScore;
+                if (criteria.category.includes('Financial')) {
+                    baseScore = 3 + randomFactor * 2; // 3-5 range
+                } else if (criteria.category.includes('Technical')) {
+                    baseScore = 3.2 + randomFactor * 1.8; // 3.2-5 range
+                } else {
+                    baseScore = 2.8 + randomFactor * 2.2; // 2.8-5 range
+                }
+                
+                const score = Math.round(baseScore * 10) / 10;
+                
+                return {
+                    ...criteria,
+                    score: score,
+                    weightedScore: (score * criteria.weight).toFixed(2)
+                };
+            });
+        }
+
+        function renderTable() {
+            tableBody.innerHTML = '';
+            
+            proposalData.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                if (idx === 0) tr.className = 'rank-1';
+                
+                const scoreClass = item.totalScore >= 85 ? 'score-high' : 
+                                 item.totalScore >= 70 ? 'score-medium' : 'score-low';
+                
+                // Calculate average criteria score
+                const avgCriteria = (item.scores.reduce((sum, s) => sum + s.score, 0) / item.scores.length).toFixed(1);
+                
+                tr.innerHTML = `
+                    <td><input type="checkbox" class="row-checkbox" onchange="updateExportSelection()"></td>
+                    <td><strong>#${idx + 1}</strong></td>
+                    <td>
+                        <div style="font-weight:600">${item.name}</div>
+                        <div style="font-size:11px; color:var(--muted)">${item.filename.substring(0,25)}...</div>
+                    </td>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:8px">
+                            <div style="width:60px; height:6px; background:#ecf0f1; border-radius:3px;">
+                                <div style="width:${item.totalScore}%; height:6px; background:${item.totalScore>=85?'#27ae60':item.totalScore>=70?'#f39c12':'#e74c3c'}; border-radius:3px;"></div>
+                            </div>
+                            <span class="${scoreClass}" style="padding:2px 8px; border-radius:12px; font-weight:600">${item.totalScore}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="score-badge ${scoreClass}">${item.status}</span>
+                    </td>
+                    <td>
+                        <span style="font-size:12px">${avgCriteria}/5.0</span>
+                    </td>
+                    <td>
+                        <button class="btn-ghost" style="padding:4px 8px; font-size:12px" onclick="showDetails(${item.id})">
+                            🔍 View
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        function showDetails(id) {
+            const proposal = proposalData.find(p => p.id === id);
+            if (!proposal) return;
+            
+            modalTitle.textContent = `Evaluation Details - ${proposal.name}`;
+            
+            let html = `
+                <div style="margin-bottom:24px">
+                    <div style="font-size:28px; font-weight:700; color:${proposal.totalScore>=85?'#27ae60':proposal.totalScore>=70?'#f39c12':'#e74c3c'}; text-align:center">
+                        ${proposal.totalScore}/100
+                    </div>
+                    <div style="text-align:center; margin-top:8px">
+                        <span class="score-badge ${proposal.totalScore>=85?'score-high':proposal.totalScore>=70?'score-medium':'score-low'}">
+                            ${proposal.status}
+                        </span>
+                    </div>
+                    <div style="text-align:center; font-size:12px; color:var(--muted); margin-top:4px">
+                        ${proposal.filename}
+                    </div>
+                </div>
+                <table style="width:100%; font-size:13px">
+                    <thead>
+                        <tr style="background:#f8fafc">
+                            <th>Criteria</th>
+                            <th style="width:60px">Weight</th>
+                            <th style="width:80px">Score (1-5)</th>
+                            <th style="width:80px">Weighted</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            proposal.scores.forEach(criteria => {
+                html += `
+                    <tr>
+                        <td>
+                            <div style="font-weight:500">${criteria.name}</div>
+                            <div style="font-size:11px; color:var(--muted)">${criteria.category}</div>
+                        </td>
+                        <td>${criteria.weight*100}%</td>
+                        <td>
+                            <span style="font-weight:600; color:${criteria.score >= 4 ? '#27ae60' : criteria.score >= 3 ? '#f39c12' : '#e74c3c'}">
+                                ${criteria.score}
+                            </span>
+                        </td>
+                        <td>${criteria.weightedScore}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                    </tbody>
+                </table>
+                <div style="margin-top:16px; padding:12px; background:#f8f9fa; border-radius:8px; font-size:12px">
+                    <strong>📝 Evaluation Guide:</strong><br>
+                    5 = Excellent • 4 = Good • 3 = Average • 2 = Poor • 1 = Very Poor
+                </div>
+            `;
+            
+            modalContent.innerHTML = html;
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+        }
+
+        function printEvaluation() {
+            window.print();
+        }
+
+        function updateAnalytics() {
+            const total = proposalData.length;
+            const highCount = proposalData.filter(p => p.totalScore >= 85).length;
+            const avgScore = total ? Math.round(proposalData.reduce((sum, p) => sum + p.totalScore, 0) / total) : 0;
+            
+            document.getElementById('totalProposals').textContent = total;
+            document.getElementById('processedCount').textContent = total;
+            document.getElementById('avgScore').textContent = avgScore;
+            
+            // Update aside stats
+            document.getElementById('asideProcessedCount').textContent = total;
+            document.getElementById('asideHighCount').textContent = highCount;
+            document.getElementById('asideAvgScore').textContent = avgScore;
+        }
+
+        function updateBatchStats() {
+            document.getElementById('totalProposals').textContent = uploadedFiles.length;
+        }
+
+        function updateExportSelection() {
+            // Could implement selection-based export
+        }
+
+        function exportToExcel() {
+            if (!proposalData.length) return alert('No data to export.');
+            
+            // Prepare detailed export
+            const exportData = [];
+            
+            proposalData.forEach((item, index) => {
+                const baseRow = {
+                    'Rank': index + 1,
+                    'Consultant/Firm': item.name,
+                    'Filename': item.filename,
+                    'Total Score': item.totalScore,
+                    'Status': item.status,
+                    '1.1 ToR Understanding': item.scores.find(s => s.id === 'c1_1')?.score || 0,
+                    '1.2 Gender/CS/MEAL': item.scores.find(s => s.id === 'c1_2')?.score || 0,
+                    '2.1 Methodology': item.scores.find(s => s.id === 'c2_1')?.score || 0,
+                    '2.2 Work Plan': item.scores.find(s => s.id === 'c2_2')?.score || 0,
+                    '3.1 Direct Experience': item.scores.find(s => s.id === 'c3_1')?.score || 0,
+                    '3.2 Thematic Experience': item.scores.find(s => s.id === 'c3_2')?.score || 0,
+                    '3.3 Local Knowledge': item.scores.find(s => s.id === 'c3_3')?.score || 0,
+                    '4.1 Budget': item.scores.find(s => s.id === 'c4_1')?.score || 0,
+                    '4.2 Cost Effectiveness': item.scores.find(s => s.id === 'c4_2')?.score || 0,
+                    '5.1 Past Work': item.scores.find(s => s.id === 'c5_1')?.score || 0,
+                    '5.2 Admin': item.scores.find(s => s.id === 'c5_2')?.score || 0
+                };
+                exportData.push(baseRow);
+            });
+
+            // Create workbook
+            const wb = XLSX.utils.book_new();
+            
+            // Detailed scores sheet
+            const ws1 = XLSX.utils.json_to_sheet(exportData);
+            ws1['!cols'] = [
+                { wch: 5 }, { wch: 25 }, { wch: 30 }, { wch: 8 }, { wch: 15 },
+                { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 },
+                { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 },
+                { wch: 6 }
+            ];
+            XLSX.utils.book_append_sheet(wb, ws1, 'Detailed Scores');
+
+            // Summary sheet (like your Excel)
+            const summaryData = proposalData.map((item, index) => ({
+                'Rank': index + 1,
+                'Consultant/Firm': item.name,
+                'Total Score': item.totalScore,
+                'Status': item.status,
+                'Recommendation': item.totalScore >= 85 ? 'Strongly Recommend' : 
+                                 item.totalScore >= 70 ? 'Recommend' : 'Consider with Conditions'
+            }));
+            const ws2 = XLSX.utils.json_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+
+            // Save
+            XLSX.writeFile(wb, `GBV_Evaluation_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        function exportComparisonMatrix() {
+            if (!proposalData.length) return alert('No data to export.');
+            
+            // Create comparison matrix
+            const matrixData = [];
+            
+            // Headers
+            const headers = ['Criteria', 'Weight'];
+            proposalData.forEach(p => headers.push(p.name));
+            matrixData.push(headers);
+
+            // Add criteria rows
+            evaluationCriteria.forEach(criteria => {
+                const row = [criteria.name, `${criteria.weight*100}%`];
+                proposalData.forEach(proposal => {
+                    const score = proposal.scores.find(s => s.id === criteria.id)?.score || 0;
+                    row.push(score);
+                });
+                matrixData.push(row);
+            });
+
+            // Add total row
+            const totalRow = ['TOTAL SCORE', '100%'];
+            proposalData.forEach(p => totalRow.push(p.totalScore));
+            matrixData.push(totalRow);
+
+            // Create worksheet
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(matrixData);
+            XLSX.utils.book_append_sheet(wb, ws, 'Comparison Matrix');
+            XLSX.writeFile(wb, `Comparison_Matrix_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+    </script>
+</body>
+</html>
